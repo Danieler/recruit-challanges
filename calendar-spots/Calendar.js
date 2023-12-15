@@ -1,110 +1,121 @@
-const moment = require('moment')
+const moment = require('moment');
 const fs = require('fs');
 
+class Calendar {
+	constructor(calendarId) {
+		this.calendarId = calendarId;
+		this.calendarData = this.loadCalendarData();
+	}
 
-// 
-function getAvailableSpots(calendar, date, duration ) {
-	let rawdata = fs.readFileSync('./calendars/calendar.' + calendar + '.json');
-	let data = JSON.parse(rawdata);
-	const dateISO = moment(date, 'DD-MM-YYYY').format('YYYY-MM-DD')
-	let durationBefore = data.durationBefore;
-	let durationAfter = data.durationAfter;
-	let daySlots = []
-	for (const key in data.slots) {
-		if (key === date) {
-			daySlots = data.slots[key]
+	// Lee y carga los datos del calendario desde un archivo JSON
+	loadCalendarData() {
+		try {
+			let rawData = fs.readFileSync(`./calendars/calendar.${this.calendarId}.json`);
+			return JSON.parse(rawData);
+		} catch (error) {
+			throw new Error('Error loading calendar data');
 		}
 	}
 
-	const realSpots = []
-	daySlots.forEach(daySlot => {
-		if (data.sessions && data.sessions[date]) {
-			let noConflicts = true
-			data.sessions[date].forEach(sessionSlot => {
-				let sessionStart = moment(dateISO + ' ' + sessionSlot.start).valueOf()
-				let sessionEnd = moment(dateISO + ' ' + sessionSlot.end).valueOf()
-				let start = moment(dateISO + ' ' + daySlot.start).valueOf()
-				let end = moment(dateISO + ' ' + daySlot.end).valueOf()
-				if (sessionStart > start && sessionEnd < end) {
-					realSpots.push({ start: daySlot.start, end: sessionSlot.start})
-					realSpots.push({ start: sessionSlot.end, end: daySlot.end})
-					noConflicts = false
-				} else if (sessionStart === start && sessionEnd < end) {
-					realSpots.push({ start: sessionSlot.end, end: daySlot.end})
-					noConflicts = false
-				} else if (sessionStart > start && sessionEnd === end) {
-					realSpots.push({ start: daySlot.start, end: sessionSlot.start})
-					noConflicts = false
-				} else if (sessionStart === start && sessionEnd === end) {
-					noConflicts = false
+	// Valida el formato de la fecha
+	isValidDate(date) {
+		return moment.utc(date, 'DD-MM-YYYY', true).isValid();
+	}
+
+	// Valida que la duración sea un número entero positivo
+	isValidDuration(duration) {
+		return Number.isInteger(duration) && duration > 0;
+	}
+
+	// Formatea una fecha del formato 'DD-MM-YYYY' al formato 'YYYY-MM-DD'
+	formatDate(date) {
+		return moment.utc(date, 'DD-MM-YYYY').format('DD-MM-YYYY');
+	}
+
+	// Obtiene las ranuras (slots) para una fecha específica
+	getSlotsForDate(dateISO) {
+		return this.calendarData.slots[dateISO] || [];
+	}
+
+	// Obtiene los espacios disponibles para una fecha y duración dadas
+	getAvailableSpots(date, duration) {
+		if (!this.isValidDate(date) || !this.isValidDuration(duration)) {
+			throw new Error('Invalid date or duration');
+		}
+
+		const dateISO = this.formatDate(date);
+		const daySlots = this.getSlotsForDate(dateISO);
+
+		let availableSpots = this.calculateAvailableSpots(daySlots, dateISO, duration);
+		return this.convertSlotsToClientTime(availableSpots, dateISO, duration);
+	}
+
+
+	// Calcula los espacios disponibles evitando conflictos con sesiones existentes
+	calculateAvailableSpots(daySlots, dateISO, duration) {
+		let availableSlots = [];
+
+
+		daySlots.forEach(slot => {
+			const slotStart = moment.utc(`${dateISO} ${slot.start}`, 'DD-MM-YYYY HH:mm');
+			const slotEnd = moment.utc(`${dateISO} ${slot.end}`, 'DD-MM-YYYY HH:mm');
+
+			// Ampliar el slot para incluir durationBefore y durationAfter
+			let expandedSlotStart = slotStart.clone().subtract(this.calendarData.durationBefore, 'minutes');
+			let expandedSlotEnd = slotEnd.clone().add(this.calendarData.durationAfter, 'minutes');
+
+			let slotIsAvailable = true;
+
+			if (this.hasSessionsOnDate(dateISO)) {
+				for (let session of this.calendarData.sessions[dateISO]) {
+					let sessionStart =  moment.utc(`${dateISO} ${session.start}`, 'DD-MM-YYYY HH:mm');
+					let sessionEnd = moment.utc(`${dateISO} ${session.end}`, 'DD-MM-YYYY HH:mm');
+
+					if (sessionStart.isBefore(expandedSlotEnd) && sessionEnd.isAfter(expandedSlotStart)) {
+						slotIsAvailable = false;
+						break; // Romper el bucle si se encuentra un conflicto
+					}
 				}
-			})
-			if (noConflicts) {
-				realSpots.push(daySlot)
 			}
-		} else {
-			realSpots.push(daySlot)
-		}
-	})
 
-	let arrSlot = [];
-	realSpots.forEach(function (slot) {
-		let init = 0;
-		let startHour;
-		let endHour;
-		let clientStartHour;
-		let clientEndHour;
+			// Comprobar si el slot tiene suficiente tiempo para la duración total del evento
+			if (slotIsAvailable) {
+				let totalDurationRequired = duration + this.calendarData.durationBefore + this.calendarData.durationAfter;
+				let availableDuration = slotEnd.diff(slotStart, 'minutes');
 
-		function getMomentHour(hour) {
-		  let finalHourForAdd = moment(dateISO + ' ' + hour);
-		  return finalHourForAdd;
-		}
-		function addMinutes(hour, minutes) {
-		  let result = moment(hour).add(minutes, 'minutes').format('HH:mm');
-		  return result;
-		}
-		function removeMinutes(hour, minutes) {
-		  let result = moment(hour).subtract(minutes, 'minutes').format('HH:mm');
-		  return result;
-		}
-		function getOneMiniSlot(startSlot, endSlot) {
-		  let startHourFirst = getMomentHour(startSlot);
-		  
-			startHour = startHourFirst.format('HH:mm');;
-			endHour = addMinutes(startHourFirst, durationBefore + duration + durationAfter);
-			clientStartHour = addMinutes(startHourFirst, durationBefore);
-			clientEndHour = addMinutes(startHourFirst, duration);
+				if (availableDuration >= totalDurationRequired) {
+					availableSlots.push({ start: slot.start, end: slot.end });
+				}
+			}
+		});
 
-		  if (moment.utc(endHour, 'HH:mm').valueOf() > moment.utc(endSlot, 'HH:mm').valueOf()) {
-			return null;
-		  } 
-		  const objSlot = {
-			startHour: moment.utc(dateISO + ' ' + startHour)
-			  .toDate(),
-			endHour: moment.utc(dateISO + ' ' + endHour)
-			  .toDate(),
-			clientStartHour: moment.utc(dateISO + ' ' + clientStartHour)
-			  .toDate(),
-			clientEndHour: moment.utc(dateISO + ' ' + clientEndHour)
-			  .toDate(),
-		  };
-		  init += 1;
-		  return objSlot;
-		}
+		return availableSlots;
+	}
 
-		let start = slot.start;
-		let resultSlot;
-		do {
-		  resultSlot = getOneMiniSlot(start, slot.end);
-		  if (resultSlot) {
-			arrSlot.push(resultSlot);
-			start = moment.utc(resultSlot.endHour).format('HH:mm')
-		  }
-		} while (resultSlot);
+// Comprueba si hay sesiones en la fecha especificada
+	hasSessionsOnDate(dateISO) {
+		return this.calendarData.sessions && this.calendarData.sessions[dateISO];
+	}
 
-		return arrSlot;
-	});
-	return arrSlot;
+	// Convierte los espacios disponibles al formato de tiempo del cliente
+	convertSlotsToClientTime(slots, dateISO, duration) {
+		return slots.map(slot => {
+			// Convertir dateISO a formato 'YYYY-MM-DD'
+			const formattedDateISO = moment(dateISO, 'DD-MM-YYYY').format('YYYY-MM-DD');
+
+			// Crear momentos en UTC para el inicio del slot
+			const slotStartMoment = moment.utc(`${formattedDateISO}T${slot.start}`);
+			const totalDuration = duration + this.calendarData.durationBefore + this.calendarData.durationAfter;
+
+			// Calcular el momento de fin del slot basado en la duración
+			const slotEndMoment = slotStartMoment.clone().add(totalDuration, 'minutes');
+
+			return {
+				startHour: slotStartMoment.toDate(),
+				endHour: slotEndMoment.toDate()
+			};
+		});
+	}
 }
 
-module.exports = { getAvailableSpots }
+module.exports = Calendar;
