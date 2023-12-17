@@ -53,43 +53,39 @@ class Calendar {
 
 	// Calcula los espacios disponibles evitando conflictos con sesiones existentes
 	calculateAvailableSpots(daySlots, dateISO, duration) {
-		let availableSlots = [];
+		return daySlots
+			.filter(slot => {
+				const slotStart = moment.utc(`${dateISO} ${slot.start}`, 'DD-MM-YYYY HH:mm');
+				const slotEnd = moment.utc(`${dateISO} ${slot.end}`, 'DD-MM-YYYY HH:mm');
 
+				// Expande el slot para incluir el tiempo antes y después de la cita
+				const expandedSlotStart = slotStart.clone().subtract(this.calendarData.durationBefore, 'minutes');
+				const expandedSlotEnd = slotEnd.clone().add(this.calendarData.durationAfter, 'minutes');
 
-		daySlots.forEach(slot => {
-			const slotStart = moment.utc(`${dateISO} ${slot.start}`, 'DD-MM-YYYY HH:mm');
-			const slotEnd = moment.utc(`${dateISO} ${slot.end}`, 'DD-MM-YYYY HH:mm');
+				// Comprueba si el slot está disponible y cumple con la duración
+				return !this.hasConflictingSession(dateISO, expandedSlotStart, expandedSlotEnd) &&
+					this.isDurationSufficient(slotStart, slotEnd, duration);
+			})
+	}
 
-			// Ampliar el slot para incluir durationBefore y durationAfter
-			let expandedSlotStart = slotStart.clone().subtract(this.calendarData.durationBefore, 'minutes');
-			let expandedSlotEnd = slotEnd.clone().add(this.calendarData.durationAfter, 'minutes');
+// Verifica si hay alguna sesión que se solape con el slot actual
+	hasConflictingSession(dateISO, expandedSlotStart, expandedSlotEnd) {
+		if (!this.hasSessionsOnDate(dateISO)) {
+			return false;
+		}
 
-			let slotIsAvailable = true;
-
-			if (this.hasSessionsOnDate(dateISO)) {
-				for (let session of this.calendarData.sessions[dateISO]) {
-					let sessionStart =  moment.utc(`${dateISO} ${session.start}`, 'DD-MM-YYYY HH:mm');
-					let sessionEnd = moment.utc(`${dateISO} ${session.end}`, 'DD-MM-YYYY HH:mm');
-
-					if (sessionStart.isBefore(expandedSlotEnd) && sessionEnd.isAfter(expandedSlotStart)) {
-						slotIsAvailable = false;
-						break; // Romper el bucle si se encuentra un conflicto
-					}
-				}
-			}
-
-			// Comprobar si el slot tiene suficiente tiempo para la duración total del evento
-			if (slotIsAvailable) {
-				let totalDurationRequired = duration + this.calendarData.durationBefore + this.calendarData.durationAfter;
-				let availableDuration = slotEnd.diff(slotStart, 'minutes');
-
-				if (availableDuration >= totalDurationRequired) {
-					availableSlots.push({ start: slot.start, end: slot.end });
-				}
-			}
+		return this.calendarData.sessions[dateISO].some(session => {
+			const sessionStart = moment.utc(`${dateISO} ${session.start}`, 'DD-MM-YYYY HH:mm');
+			const sessionEnd = moment.utc(`${dateISO} ${session.end}`, 'DD-MM-YYYY HH:mm');
+			return sessionStart.isBefore(expandedSlotEnd) && sessionEnd.isAfter(expandedSlotStart);
 		});
+	}
 
-		return availableSlots;
+// Comprueba si la duración del slot es suficiente
+	isDurationSufficient(slotStart, slotEnd, duration) {
+		const totalDurationRequired = duration + this.calendarData.durationBefore + this.calendarData.durationAfter;
+		const availableDuration = slotEnd.diff(slotStart, 'minutes');
+		return availableDuration >= totalDurationRequired;
 	}
 
 // Comprueba si hay sesiones en la fecha especificada
