@@ -20,8 +20,12 @@ class CalendarUtils {
     return Number.isInteger(duration) && duration > 0;
   }
 
-  static formatDate(date) {
+  static formatDateToDayMonthYear(date) {
     return moment.utc(date, 'DD-MM-YYYY').format('DD-MM-YYYY');
+  }
+
+  static formatDateToYearMonthDay(date) {
+    return moment.utc(date, 'DD-MM-YYYY').format('YYYY-MM-DD');
   }
 }
 

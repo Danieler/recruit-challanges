@@ -19,7 +19,7 @@ class Calendar {
 			throw new Error('Invalid date or duration');
 		}
 
-		const dateISO = CalendarUtils.formatDate(date);
+		const dateISO = CalendarUtils.formatDateToDayMonthYear(date);
 		const daySlots = this.getSlotsForDate(dateISO);
 
 		let availableSpots = this.slotCalculator.calculateAvailableSpots(daySlots, dateISO, duration);

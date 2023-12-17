@@ -46,7 +46,7 @@ class CalendarSlotCalculator {
   // Convierte los espacios disponibles al formato de tiempo del cliente
   convertSlotsToClientTime(slots, dateISO, duration) {
     return slots.map(slot => {
-      const formattedDateISO = moment(dateISO, 'DD-MM-YYYY').format('YYYY-MM-DD');
+      const formattedDateISO = CalendarUtils.formatDateToYearMonthDay(dateISO);
       const slotStartMoment = moment.utc(`${formattedDateISO}T${slot.start}`);
       const totalDuration = duration + this.calendarData.durationBefore + this.calendarData.durationAfter;
       const slotEndMoment = slotStartMoment.clone().add(totalDuration, 'minutes');
