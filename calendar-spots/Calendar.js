@@ -1,35 +1,9 @@
 const moment = require('moment');
-const fs = require('fs');
+const CalendarUtils = require('./CalendarUtils');
 
 class Calendar {
 	constructor(calendarId) {
-		this.calendarId = calendarId;
-		this.calendarData = this.loadCalendarData();
-	}
-
-	// Lee y carga los datos del calendario desde un archivo JSON
-	loadCalendarData() {
-		try {
-			let rawData = fs.readFileSync(`./calendars/calendar.${this.calendarId}.json`);
-			return JSON.parse(rawData);
-		} catch (error) {
-			throw new Error('Error loading calendar data');
-		}
-	}
-
-	// Valida el formato de la fecha
-	isValidDate(date) {
-		return moment.utc(date, 'DD-MM-YYYY', true).isValid();
-	}
-
-	// Valida que la duración sea un número entero positivo
-	isValidDuration(duration) {
-		return Number.isInteger(duration) && duration > 0;
-	}
-
-	// Formatea una fecha del formato 'DD-MM-YYYY' al formato 'YYYY-MM-DD'
-	formatDate(date) {
-		return moment.utc(date, 'DD-MM-YYYY').format('DD-MM-YYYY');
+		this.calendarData = CalendarUtils.loadCalendarData(calendarId);
 	}
 
 	// Obtiene las ranuras (slots) para una fecha específica
@@ -39,11 +13,11 @@ class Calendar {
 
 	// Obtiene los espacios disponibles para una fecha y duración dadas
 	getAvailableSpots(date, duration) {
-		if (!this.isValidDate(date) || !this.isValidDuration(duration)) {
+		if (!CalendarUtils.isValidDate(date) || !CalendarUtils.isValidDuration(duration)) {
 			throw new Error('Invalid date or duration');
 		}
 
-		const dateISO = this.formatDate(date);
+		const dateISO = CalendarUtils.formatDate(date);
 		const daySlots = this.getSlotsForDate(dateISO);
 
 		let availableSpots = this.calculateAvailableSpots(daySlots, dateISO, duration);
